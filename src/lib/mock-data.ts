@@ -23,6 +23,22 @@ export const mockWod = {
   createdAt: new Date().toISOString(),
 };
 
+export const mockAthleteEnrollment = {
+  athleteName: "João Aluno",
+  primaryBoxId: "67ea76a5ac5d89c8bb9d2111",
+  boxIds: [
+    "67ea76a5ac5d89c8bb9d2111",
+    "67ea76a5ac5d89c8bb9d2112",
+    "67ea76a5ac5d89c8bb9d2113",
+  ],
+};
+
+export const mockBoxes = [
+  { _id: "67ea76a5ac5d89c8bb9d2111", name: "Cross Box Alpha", neighborhood: "Centro" },
+  { _id: "67ea76a5ac5d89c8bb9d2112", name: "Cross Box Norte", neighborhood: "Zona Norte" },
+  { _id: "67ea76a5ac5d89c8bb9d2113", name: "Cross Box Leste", neighborhood: "Zona Leste" },
+];
+
 export const mockFeedPosts = [
   {
     id: "1",

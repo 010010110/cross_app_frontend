@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { MapPin, Zap, Flame, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { mockWod } from "@/lib/mock-data";
+import { mockWod, mockAthleteEnrollment, mockBoxes } from "@/lib/mock-data";
 
 type WodBlockType = "WARMUP" | "SKILL" | "WOD";
 
@@ -21,6 +21,13 @@ export function HomeScreen() {
   const [checkedIn, setCheckedIn] = useState(false);
   const [showXp, setShowXp] = useState(false);
 
+  const currentBox =
+    mockBoxes.find((box) => box._id === mockAthleteEnrollment.primaryBoxId) ?? null;
+  const enrolledBoxes = mockBoxes.filter((box) =>
+    mockAthleteEnrollment.boxIds.includes(box._id)
+  );
+  const otherBoxes = enrolledBoxes.filter((box) => box._id !== currentBox?._id);
+
   const handleCheckin = () => {
     setCheckedIn(true);
     setShowXp(true);
@@ -36,7 +43,7 @@ export function HomeScreen() {
             {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "short" })}
           </p>
           <h1 className="text-2xl font-bold tracking-tight">
-            {checkedIn ? mockWod.title : "Treino do Dia"}
+            {checkedIn ? mockWod.title : `Treino do Dia • ${currentBox?.name ?? "Seu Box"}`}
           </h1>
         </div>
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary">
@@ -82,6 +89,25 @@ export function HomeScreen() {
           <p className="text-xs text-center text-muted-foreground">
             Você precisa estar a menos de 100m do box
           </p>
+
+          {otherBoxes.length > 0 && (
+            <div className="glass-card p-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                Outros boxes cadastrados
+              </p>
+              <div className="space-y-2">
+                {otherBoxes.map((box) => (
+                  <div
+                    key={box._id}
+                    className="flex items-center justify-between rounded-lg border border-border/60 bg-secondary/40 px-3 py-2"
+                  >
+                    <span className="text-sm font-medium">{box.name}</span>
+                    <span className="text-xs text-muted-foreground">{box.neighborhood}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         /* Post-Checkin State */
