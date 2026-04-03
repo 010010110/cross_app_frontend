@@ -1,5 +1,8 @@
-import { Flame, Snowflake, Zap, Trophy, Shield, Target } from "lucide-react";
+import { Flame, Snowflake, Zap, Trophy, Shield, Target, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { mockRewardSummary, mockMilestones } from "@/lib/mock-data";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 
 const streakStateConfig = {
   ACTIVE: { label: "Ativo", color: "text-xp", bg: "bg-xp/15" },
@@ -11,6 +14,13 @@ const streakStateConfig = {
 export function ProfileScreen() {
   const data = mockRewardSummary;
   const state = streakStateConfig[data.streakState];
+  const { logout, user } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
 
   return (
     <div className="px-4 pt-4 pb-24 max-w-lg mx-auto space-y-5 animate-fade-in">
@@ -122,6 +132,16 @@ export function ProfileScreen() {
           ))}
         </div>
       </div>
+
+      {/* Logout */}
+      <Button
+        variant="outline"
+        className="w-full border-destructive/40 text-destructive hover:bg-destructive/10"
+        onClick={handleLogout}
+      >
+        <LogOut className="h-4 w-4 mr-2" />
+        Sair da conta{user ? ` (${user.email})` : ""}
+      </Button>
     </div>
   );
 }
