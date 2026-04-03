@@ -11,6 +11,44 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    proxy: {
+      "/auth": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+      "/feed": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+      "/boxes": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+      "/checkins": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+      "/results": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+      "/classes": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+      "/exercises": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+      "/wods": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+      "/users": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

@@ -1,6 +1,6 @@
-import { Home, Newspaper, TrendingUp, User } from "lucide-react";
+import { Home, Newspaper, TrendingUp, MapPinned } from "lucide-react";
 
-type Tab = "home" | "feed" | "evolution" | "profile";
+type Tab = "home" | "feed" | "evolution" | "boxes";
 
 interface TabBarProps {
   active: Tab;
@@ -9,9 +9,9 @@ interface TabBarProps {
 
 const tabs = [
   { id: "home" as Tab, label: "Treino", icon: Home },
+  { id: "boxes" as Tab, label: "Boxes", icon: MapPinned },
   { id: "feed" as Tab, label: "Feed", icon: Newspaper },
   { id: "evolution" as Tab, label: "Evolução", icon: TrendingUp },
-  { id: "profile" as Tab, label: "Perfil", icon: User },
 ];
 
 export function TabBar({ active, onChange }: TabBarProps) {

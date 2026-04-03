@@ -7,10 +7,18 @@ export function useLogin() {
   const { login } = useAuth();
 
   return useMutation({
-    mutationFn: (dto: LoginDto) =>
-      api.post<SessionResponse>("/auth/login", dto),
+    mutationFn: async (dto: LoginDto) => {
+      try {
+        return await api.post<SessionResponse>("/auth/login", dto);
+      } catch (error) {
+        throw error;
+      }
+    },
     onSuccess: (data) => {
       login(data.accessToken, data.user);
+    },
+    onError: (error) => {
+      console.error("Login failed:", error);
     },
   });
 }
