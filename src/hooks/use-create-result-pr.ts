@@ -5,6 +5,6 @@ import { CreateExercisePrDto, CreateResultResponse } from "@/types/result";
 export function useCreateResultPr() {
   return useMutation({
     mutationFn: (dto: CreateExercisePrDto) =>
-      api.post<CreateResultResponse>("/results/pr", dto),
+      api.post<CreateResultResponse>("/results/pr", dto, { withBoxId: false }),
   });
 }

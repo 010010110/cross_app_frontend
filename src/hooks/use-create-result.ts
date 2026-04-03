@@ -1,10 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { CreateResultDto, CreateResultResponse } from "@/types/result";
+import { CreateResultDto, CreateWodResultResponse } from "@/types/result";
 
 export function useCreateResult() {
   return useMutation({
     mutationFn: (dto: CreateResultDto) =>
-      api.post<CreateResultResponse>("/results", dto),
+      api.post<CreateWodResultResponse>("/results", dto, { withBoxId: false }),
   });
 }

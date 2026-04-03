@@ -18,7 +18,7 @@ export function useResultsPrList(limit = 50, enabled = true) {
   return useQuery({
     queryKey: ["results", "pr", limit],
     queryFn: async () => {
-      const response = await api.get<unknown>(`/results/pr?limit=${limit}`);
+      const response = await api.get<unknown>(`/results/pr?limit=${limit}`, { withBoxId: false });
       return normalizeResults(response);
     },
     initialData: [],

@@ -18,12 +18,18 @@ import { useResultsPrList } from "@/hooks/use-results-pr-list";
 import { useCreateResultPr } from "@/hooks/use-create-result-pr";
 import { useCreateResult } from "@/hooks/use-create-result";
 import { useWodToday } from "@/hooks/use-wod-today";
-import { ResultListItem } from "@/types/result";
+import { ResultListItem, WodResultListItem } from "@/types/result";
 import { WodModel } from "@/types/box";
 import { Line, LineChart, XAxis, YAxis } from "recharts";
 
 type EvolutionView = "prs" | "wod";
 type WodScoreMode = "REPS" | "TIME" | "FLEX" | "UNKNOWN";
+type WodSelectionOption = {
+  _id: string;
+  title: string;
+  date: string | null;
+  model?: WodModel | null;
+};
 
 const scoreKindLabel: Record<string, string> = {
   TIME: "Tempo",
@@ -37,6 +43,17 @@ function formatDateTime(value: string) {
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+  });
+}
+
+function formatWodDate(value: string | null) {
+  if (!value) return "Data indisponivel";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Data indisponivel";
+  return parsed.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   });
 }
 
@@ -157,17 +174,12 @@ function normalizeWodScorePayload(value: string, mode: WodScoreMode): string {
   return trimmed;
 }
 
-function ResultCard({ item, mode }: { item: ResultListItem; mode: EvolutionView }) {
-  const primaryLabel =
-    mode === "wod"
-      ? item.wodTitle ?? "WOD"
-      : item.exerciseName ?? "Exercício";
-
+function PrResultCard({ item }: { item: ResultListItem }) {
   return (
     <div className="glass-card p-4 space-y-2.5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-semibold text-sm">{primaryLabel}</p>
+          <p className="font-semibold text-sm">{item.exerciseName ?? "Exercício"}</p>
           <p className="text-xs text-muted-foreground">{formatDateTime(item.createdAt)}</p>
         </div>
         <div className="text-right">
@@ -175,18 +187,39 @@ function ResultCard({ item, mode }: { item: ResultListItem; mode: EvolutionView 
           <p className="text-[11px] text-muted-foreground">{scoreKindLabel[item.scoreKind] ?? item.scoreKind}</p>
         </div>
       </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {mode === "wod" && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-[11px] text-secondary-foreground">
-            <CalendarDays className="h-3.5 w-3.5" />
-            {item.wodTitle ?? "WOD"}
-          </span>
-        )}
-        {item.isNewPR && (
+      {item.isNewPR && (
+        <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2.5 py-1 text-[11px] font-semibold text-primary">
             <Trophy className="h-3.5 w-3.5" />
             Novo PR
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WodResultCard({ item }: { item: WodResultListItem }) {
+  return (
+    <div className="glass-card p-4 space-y-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-sm">{item.wodTitle ?? "WOD"}</p>
+          <p className="text-xs text-muted-foreground">{formatDateTime(item.createdAt)}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-base font-bold text-primary">{item.score}</p>
+          <p className="text-[11px] text-muted-foreground">{scoreKindLabel[item.scoreKind] ?? item.scoreKind}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-[11px] text-secondary-foreground">
+          <CalendarDays className="h-3.5 w-3.5" />
+          WOD completo
+        </span>
+        {item.wodModel && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-secondary-foreground">
+            {item.wodModel}
           </span>
         )}
       </div>
@@ -208,6 +241,7 @@ export function EvolutionScreen() {
   const [historyExerciseId, setHistoryExerciseId] = useState<string | null>(null);
   const [prExerciseId, setPrExerciseId] = useState("");
   const [prScore, setPrScore] = useState("");
+  const [selectedWodId, setSelectedWodId] = useState("");
   const [wodScore, setWodScore] = useState("");
 
   const enabled = Boolean(user && selectedBoxId);
@@ -233,16 +267,61 @@ export function EvolutionScreen() {
   const { mutateAsync: createPr, isPending: createPrPending } = useCreateResultPr();
   const { mutateAsync: createWodResult, isPending: createWodPending } = useCreateResult();
 
-  const detectedWodScoreMode = useMemo(
-    () => detectWodScoreMode(wodToday?.model, wodToday?.title, wodToday?.blocks),
-    [wodToday]
-  );
-  const effectiveWodScoreMode = detectedWodScoreMode;
-
   const wodResults = useMemo(
-    () => allResults.filter((result) => Boolean(result.wodId)),
+    () => allResults.slice().sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)),
     [allResults]
   );
+
+  const wodOptions = useMemo(() => {
+    const optionsById = new Map<string, WodSelectionOption>();
+
+    if (wodToday?._id) {
+      optionsById.set(wodToday._id, {
+        _id: wodToday._id,
+        title: wodToday.title ?? "WOD de hoje",
+        date: wodToday.date ?? null,
+        model: wodToday.model,
+      });
+    }
+
+    for (const item of wodResults) {
+      if (!item.wodId || optionsById.has(item.wodId)) continue;
+      optionsById.set(item.wodId, {
+        _id: item.wodId,
+        title: item.wodTitle ?? `WOD ${item.wodId.slice(-6)}`,
+        date: item.wodDate ?? null,
+        model: item.wodModel,
+      });
+    }
+
+    return Array.from(optionsById.values()).sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return +new Date(b.date) - +new Date(a.date);
+    });
+  }, [wodResults, wodToday]);
+
+  const selectedWodOption = useMemo(
+    () => wodOptions.find((option) => option._id === selectedWodId) ?? null,
+    [wodOptions, selectedWodId]
+  );
+
+  const selectedWodBlocks = useMemo(() => {
+    if (!selectedWodOption?._id || selectedWodOption._id !== wodToday?._id) return undefined;
+    return wodToday.blocks;
+  }, [selectedWodOption, wodToday]);
+
+  const detectedWodScoreMode = useMemo(
+    () =>
+      detectWodScoreMode(
+        selectedWodOption?.model ?? wodToday?.model,
+        selectedWodOption?.title ?? wodToday?.title,
+        selectedWodBlocks
+      ),
+    [selectedWodBlocks, selectedWodOption, wodToday]
+  );
+  const effectiveWodScoreMode = detectedWodScoreMode;
 
   const prHistoryByExercise = useMemo(() => {
     const byExercise: Record<string, ResultListItem[]> = {};
@@ -284,16 +363,15 @@ export function EvolutionScreen() {
     if (!query) return wodResults;
 
     return wodResults.filter((item) => {
-      const exerciseName = (item.exerciseName ?? "").toLowerCase();
       const wodTitle = (item.wodTitle ?? "").toLowerCase();
       const score = item.score.toLowerCase();
-      return exerciseName.includes(query) || wodTitle.includes(query) || score.includes(query);
+      return wodTitle.includes(query) || score.includes(query);
     });
   }, [wodResults, search]);
 
-  const activeList = view === "prs" ? filteredPrs : filteredWodResults;
   const activeLoading = view === "prs" ? prLoading : allResultsLoading;
   const activeError = view === "prs" ? prError : allResultsError;
+  const activeListEmpty = view === "prs" ? filteredPrs.length === 0 : filteredWodResults.length === 0;
   const selectedHistory = historyExerciseId ? prHistoryByExercise[historyExerciseId] ?? [] : [];
   const selectedHistoryExerciseName = selectedHistory[0]?.exerciseName ?? "Exercício";
   const historyChartData = useMemo(() => {
@@ -344,10 +422,10 @@ export function EvolutionScreen() {
   const handleCreateWodResult = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!wodToday?._id) {
+    if (!selectedWodId) {
       toast({
         title: "WOD indisponível",
-        description: "Não há WOD disponível para registrar resultado no momento.",
+        description: "Selecione um WOD para registrar o resultado.",
         variant: "destructive",
       });
       return;
@@ -396,7 +474,7 @@ export function EvolutionScreen() {
     try {
       const normalizedScore = normalizeWodScorePayload(wodScore, effectiveWodScoreMode);
       const response = await createWodResult({
-        wodId: wodToday._id,
+        wodId: selectedWodId,
         score: normalizedScore,
       });
 
@@ -406,7 +484,7 @@ export function EvolutionScreen() {
       setWodDialogOpen(false);
 
       toast({
-        title: response.isNewPR ? "Resultado com novo PR" : "Resultado do WOD registrado",
+        title: "Resultado do WOD registrado",
         description: response.message,
       });
     } catch (error: unknown) {
@@ -500,7 +578,15 @@ export function EvolutionScreen() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={wodDialogOpen} onOpenChange={setWodDialogOpen}>
+        <Dialog
+          open={wodDialogOpen}
+          onOpenChange={(open) => {
+            setWodDialogOpen(open);
+            if (open) {
+              setSelectedWodId((current) => current || wodToday?._id || wodOptions[0]?._id || "");
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button variant="outline" size="sm" className="flex-1">
               <Plus className="h-4 w-4 mr-2" />
@@ -512,10 +598,25 @@ export function EvolutionScreen() {
               <DialogTitle>Registrar resultado do WOD</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleCreateWodResult} className="space-y-3">
-              <Input
-                value={wodToday?.title ?? "Sem WOD disponível hoje"}
-                disabled
-              />
+              <select
+                value={selectedWodId}
+                onChange={(event) => setSelectedWodId(event.target.value)}
+                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                disabled={createWodPending || wodOptions.length === 0}
+              >
+                <option value="">Selecione um WOD</option>
+                {wodOptions.map((option) => (
+                  <option key={option._id} value={option._id}>
+                    {option.title} - {formatWodDate(option.date)}
+                  </option>
+                ))}
+              </select>
+
+              {wodOptions.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Nenhum WOD disponível para seleção no momento.
+                </p>
+              )}
 
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-muted-foreground">Tipo de score do WOD</p>
@@ -544,7 +645,7 @@ export function EvolutionScreen() {
                 disabled={createWodPending}
               />
 
-              <Button type="submit" className="w-full" disabled={createWodPending || !wodToday?._id}>
+              <Button type="submit" className="w-full" disabled={createWodPending || !selectedWodId}>
                 {createWodPending ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -656,6 +757,12 @@ export function EvolutionScreen() {
         <span className="rounded-full bg-secondary px-3 py-1">{wodResults.length} resultados de WOD</span>
       </div>
 
+      {view === "wod" && (
+        <div className="glass-card p-3 text-xs text-muted-foreground">
+          O resultado do WOD representa seu score final do treino completo do dia.
+        </div>
+      )}
+
       {activeLoading && (
         <div className="glass-card p-4 text-sm text-muted-foreground">Carregando evolução...</div>
       )}
@@ -669,7 +776,7 @@ export function EvolutionScreen() {
         </div>
       )}
 
-      {!activeLoading && !activeError && activeList.length === 0 && (
+      {!activeLoading && !activeError && activeListEmpty && (
         <div className="glass-card p-5 text-center space-y-2">
           <p className="font-semibold text-sm">
             {view === "prs"
@@ -685,9 +792,8 @@ export function EvolutionScreen() {
       )}
 
       <div className="space-y-2.5">
-        {activeList.map((item) => {
-          if (view === "prs") {
-            return (
+        {view === "prs"
+          ? filteredPrs.map((item) => (
               <button
                 key={item._id}
                 type="button"
@@ -697,13 +803,12 @@ export function EvolutionScreen() {
                   setHistoryDialogOpen(true);
                 }}
               >
-                <ResultCard item={item} mode={view} />
+                <PrResultCard item={item} />
               </button>
-            );
-          }
-
-          return <ResultCard key={item._id} item={item} mode={view} />;
-        })}
+            ))
+          : filteredWodResults.map((item) => (
+              <WodResultCard key={item._id} item={item} />
+            ))}
       </div>
 
       {!activeLoading && !activeError && (view === "prs" ? latestPrPerExercise.length : allResults.length) >= limit && (
