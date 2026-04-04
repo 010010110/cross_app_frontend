@@ -32,6 +32,10 @@ export default defineConfig(({ mode }) => ({
         target: "http://localhost:3000",
         changeOrigin: true,
       },
+      "/rewards": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
       "/classes": {
         target: "http://localhost:3000",
         changeOrigin: true,

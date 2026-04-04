@@ -18,7 +18,7 @@ import { useResultsPrList } from "@/hooks/use-results-pr-list";
 import { useCreateResultPr } from "@/hooks/use-create-result-pr";
 import { useCreateResult } from "@/hooks/use-create-result";
 import { useWodToday } from "@/hooks/use-wod-today";
-import { ResultListItem, WodResultListItem } from "@/types/result";
+import { AutoFeedPostStatus, ResultListItem, WodResultListItem } from "@/types/result";
 import { WodModel } from "@/types/box";
 import { Line, LineChart, XAxis, YAxis } from "recharts";
 
@@ -174,6 +174,24 @@ function normalizeWodScorePayload(value: string, mode: WodScoreMode): string {
   return trimmed;
 }
 
+function autoFeedPostStatusLabel(status: AutoFeedPostStatus): string {
+  switch (status) {
+    case "created":
+      return "Post automatico criado no feed.";
+    case "skipped-no-checkin":
+      return "Sem post automatico: nenhum check-in valido encontrado.";
+    case "skipped-already-posted":
+    case "skipped-existing-post":
+      return "Sem post automatico: check-in ja possuia post.";
+    case "skipped-no-new-pr":
+      return "Sem post automatico: resultado nao foi novo PR.";
+    case "failed":
+      return "PR salvo, mas houve falha ao criar post automatico.";
+    default:
+      return "Status de auto post indisponivel.";
+  }
+}
+
 function PrResultCard({ item }: { item: ResultListItem }) {
   return (
     <div className="glass-card p-4 space-y-2.5">
@@ -241,6 +259,7 @@ export function EvolutionScreen() {
   const [historyExerciseId, setHistoryExerciseId] = useState<string | null>(null);
   const [prExerciseId, setPrExerciseId] = useState("");
   const [prScore, setPrScore] = useState("");
+  const [prAutoPostText, setPrAutoPostText] = useState("");
   const [selectedWodId, setSelectedWodId] = useState("");
   const [wodScore, setWodScore] = useState("");
 
@@ -372,7 +391,10 @@ export function EvolutionScreen() {
   const activeLoading = view === "prs" ? prLoading : allResultsLoading;
   const activeError = view === "prs" ? prError : allResultsError;
   const activeListEmpty = view === "prs" ? filteredPrs.length === 0 : filteredWodResults.length === 0;
-  const selectedHistory = historyExerciseId ? prHistoryByExercise[historyExerciseId] ?? [] : [];
+  const selectedHistory = useMemo(
+    () => (historyExerciseId ? prHistoryByExercise[historyExerciseId] ?? [] : []),
+    [historyExerciseId, prHistoryByExercise]
+  );
   const selectedHistoryExerciseName = selectedHistory[0]?.exerciseName ?? "Exercício";
   const historyChartData = useMemo(() => {
     return selectedHistory
@@ -398,16 +420,21 @@ export function EvolutionScreen() {
     }
 
     try {
-      const response = await createPr({ exerciseId: prExerciseId, score: prScore.trim() });
+      const response = await createPr({
+        exerciseId: prExerciseId,
+        score: prScore.trim(),
+        autoPostText: prAutoPostText.trim() || undefined,
+      });
       await Promise.all([refetchPrs(), refetchResults()]);
 
       setPrExerciseId("");
       setPrScore("");
+      setPrAutoPostText("");
       setPrDialogOpen(false);
 
       toast({
         title: response.isNewPR ? "Novo PR registrado" : "Resultado registrado",
-        description: response.message,
+        description: `${response.message} ${autoFeedPostStatusLabel(response.autoFeedPost.status)}`,
       });
     } catch (error: unknown) {
       const message = (error as { message?: string | string[] })?.message;
@@ -561,6 +588,15 @@ export function EvolutionScreen() {
                 value={prScore}
                 onChange={(event) => setPrScore(event.target.value)}
                 placeholder="Ex: 95kg ou 01:50"
+                disabled={createPrPending}
+              />
+
+              <textarea
+                value={prAutoPostText}
+                onChange={(event) => setPrAutoPostText(event.target.value)}
+                placeholder="Texto opcional para auto-post quando houver novo PR"
+                maxLength={1200}
+                className="min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 disabled={createPrPending}
               />
 

@@ -9,6 +9,7 @@ import { useBoxesMine } from "@/hooks/use-boxes-mine";
 import { useClassesToday } from "@/hooks/use-classes-today";
 import { useWodToday } from "@/hooks/use-wod-today";
 import { useCheckInClass } from "@/hooks/use-check-in-class";
+import { useRewardsSummary } from "@/hooks/use-rewards-summary";
 import { WodBlockType } from "@/types/box";
 
 const blockColors: Record<WodBlockType, string> = {
@@ -50,6 +51,7 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
     isLoading: wodLoading,
     isError: wodError,
   } = useWodToday(selectedBoxId, hasSelectedEnrolledBox);
+  const { data: rewardsSummary } = useRewardsSummary(selectedBoxId, hasSelectedEnrolledBox);
 
   const { mutateAsync: checkInClass, isPending: checkInPending } = useCheckInClass();
 
@@ -77,15 +79,24 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
         try {
-          await checkInClass({
+          const response = await checkInClass({
             classId,
             latitude: parseFloat(coords.latitude.toFixed(6)),
             longitude: parseFloat(coords.longitude.toFixed(6)),
           });
 
+          const consistency = response.consistency;
+          const milestoneLabel =
+            consistency.milestonesUnlocked.length > 0
+              ? ` Novos milestones: ${consistency.milestonesUnlocked.join(", ")} dias.`
+              : "";
+          const alreadyCounted = consistency.activityStatus === "already-counted";
+
           toast({
-            title: "Check-in realizado com sucesso",
-            description: `Você fez check-in na aula ${className}.`,
+            title: alreadyCounted ? "Check-in registrado" : "Check-in contabilizado",
+            description: alreadyCounted
+              ? `Voce ja tinha contabilizado atividade hoje. Streak atual: ${consistency.currentStreak}.`
+              : `+${consistency.xpGained} XP na aula ${className}. Streak: ${consistency.currentStreak}.${milestoneLabel}`,
           });
         } catch (err: unknown) {
           const status = (err as { status?: number })?.status;
@@ -133,7 +144,7 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary">
             <Flame className="h-4 w-4 text-streak" />
-            <span className="text-sm font-semibold">12</span>
+            <span className="text-sm font-semibold">{rewardsSummary?.currentStreak ?? "-"}</span>
           </div>
           <UserMenu onOpenProfile={onOpenProfile} />
         </div>

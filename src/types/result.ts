@@ -58,6 +58,7 @@ export interface CreateResultDto {
 export interface CreateExercisePrDto {
   exerciseId: string;
   score: string;
+  autoPostText?: string;
 }
 
 /** Resposta de POST /results */
@@ -68,17 +69,20 @@ export interface CreateWodResultResponse {
 }
 
 /** Resposta de POST /results/pr */
+export type AutoFeedPostStatus =
+  | "created"
+  | "skipped-no-checkin"
+  | "skipped-already-posted"
+  | "skipped-no-new-pr"
+  | "failed"
+  | "skipped-existing-post";
+
 export interface CreateResultResponse {
   resultId: string;
   isNewPR: boolean;
   scoreKind: ResultScoreKind;
   autoFeedPost: {
-    status:
-      | "created"
-      | "failed"
-      | "skipped-existing-post"
-      | "skipped-no-checkin"
-      | "skipped-no-new-pr";
+    status: AutoFeedPostStatus;
     postId?: string;
     checkinId?: string;
   };
