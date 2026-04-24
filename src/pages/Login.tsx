@@ -21,6 +21,7 @@ import { useRegisterBox } from "@/hooks/use-register-box";
 import { useRegisterStudent } from "@/hooks/use-register-student";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { getRoleHomeRoute } from "@/lib/role-routing";
 import { LoginDto, RegisterUserDto } from "@/types/auth";
 import { RegisterBoxDto } from "@/types/box";
 
@@ -133,7 +134,7 @@ type RegisterValues = z.infer<typeof registerSchema>;
 
 export default function Login() {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { toast } = useToast();
   const [mode, setMode] = useState<"login" | "register-student" | "register-box">("login");
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
@@ -163,8 +164,9 @@ export default function Login() {
   });
 
   useEffect(() => {
-    if (token) navigate("/", { replace: true });
-  }, [token, navigate]);
+    if (!token || !user?.role) return;
+    navigate(getRoleHomeRoute(user.role), { replace: true });
+  }, [token, user, navigate]);
 
   // ── Login submit ──
   const onLogin = (values: LoginValues) => {
@@ -174,7 +176,7 @@ export default function Login() {
     };
 
     doLogin(payload, {
-      onSuccess: () => navigate("/", { replace: true }),
+      onSuccess: (data) => navigate(getRoleHomeRoute(data.user.role), { replace: true }),
       onError: (err: unknown) => {
         const status = (err as { status?: number })?.status;
         toast({
@@ -203,7 +205,7 @@ export default function Login() {
     };
 
     doStudentRegister(payload, {
-      onSuccess: () => navigate("/", { replace: true }),
+      onSuccess: (data) => navigate(getRoleHomeRoute(data.user.role), { replace: true }),
       onError: (err: unknown) => {
         const status = (err as { status?: number })?.status;
         const message = (err as { message?: string | string[] })?.message;
@@ -240,7 +242,7 @@ export default function Login() {
     };
 
     doRegister(payload, {
-      onSuccess: () => navigate("/", { replace: true }),
+      onSuccess: (data) => navigate(getRoleHomeRoute(data.user.role), { replace: true }),
       onError: (err: unknown) => {
         const status = (err as { status?: number })?.status;
         const message = (err as { message?: string })?.message;

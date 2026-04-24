@@ -52,6 +52,20 @@ export default defineConfig(({ mode }) => ({
         target: "http://localhost:3000",
         changeOrigin: true,
       },
+      "/admin/reports": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+      "/admin": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+        bypass(req) {
+          // Serve index.html for /admin route (SPA navigation)
+          if (req.url === "/admin" || (!req.url.includes(".") && !req.url.startsWith("/admin/reports"))) {
+            return "/index.html";
+          }
+        },
+      },
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),

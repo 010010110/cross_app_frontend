@@ -70,7 +70,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setSelectedBoxId = useCallback((id: string) => {
-    if (user && user.boxIds.length > 0 && !user.boxIds.includes(id)) return;
+    // Admin can manage boxes that may not all be present in JWT boxIds.
+    if (user && user.role !== "ADMIN" && user.boxIds.length > 0 && !user.boxIds.includes(id)) return;
     localStorage.setItem(BOX_ID_KEY, id);
     setSelectedBoxIdState(id);
   }, [user]);
