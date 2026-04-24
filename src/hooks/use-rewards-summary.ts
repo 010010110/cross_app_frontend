@@ -1,11 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { normalizeObjectPayload } from "@/lib/response";
 import { RewardSummary } from "@/types/rewards";
 
 function normalizeRewardSummary(payload: unknown): RewardSummary | null {
-  if (!payload || typeof payload !== "object") return null;
-
-  const raw = payload as {
+  const raw = normalizeObjectPayload<{
     currentStreak?: unknown;
     longestStreak?: unknown;
     lastActivityDate?: unknown;
@@ -14,7 +13,9 @@ function normalizeRewardSummary(payload: unknown): RewardSummary | null {
     streakState?: unknown;
     daysSinceLastActivity?: unknown;
     nextMilestone?: unknown;
-  };
+  }>(payload);
+
+  if (!raw) return null;
 
   if (typeof raw.currentStreak !== "number") return null;
   if (typeof raw.longestStreak !== "number") return null;

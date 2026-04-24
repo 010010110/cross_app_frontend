@@ -98,4 +98,7 @@ export const api = {
 
   get: <T>(path: string, options: ApiRequestOptions = {}) =>
     request<T>(path, { ...options, method: "GET" }),
+
+  delete: <T>(path: string, options: ApiRequestOptions = {}) =>
+    request<T>(path, { ...options, method: "DELETE" }),
 };
