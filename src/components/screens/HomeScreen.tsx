@@ -9,6 +9,8 @@ import { useBoxesMine } from "@/hooks/use-boxes-mine";
 import { useClassesToday } from "@/hooks/use-classes-today";
 import { useWodToday } from "@/hooks/use-wod-today";
 import { useCheckInClass } from "@/hooks/use-check-in-class";
+import { useCheckinsMe } from "@/hooks/use-checkins-me";
+import { useDeleteCheckin } from "@/hooks/use-delete-checkin";
 import { useRewardsSummary } from "@/hooks/use-rewards-summary";
 import { WodBlockType } from "@/types/box";
 
@@ -34,6 +36,7 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
   const { toast } = useToast();
 
   const [checkingInClassId, setCheckingInClassId] = useState<string | null>(null);
+  const [cancelingCheckinId, setCancelingCheckinId] = useState<string | null>(null);
 
   const hasAnyBox = (user?.boxIds.length ?? 0) > 0;
 
@@ -45,6 +48,7 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
     isLoading: classesLoading,
     isError: classesError,
   } = useClassesToday(selectedBoxId, hasSelectedEnrolledBox);
+  const { data: myCheckins = [] } = useCheckinsMe(hasSelectedEnrolledBox);
 
   const {
     data: wodToday,
@@ -54,6 +58,7 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
   const { data: rewardsSummary } = useRewardsSummary(selectedBoxId, hasSelectedEnrolledBox);
 
   const { mutateAsync: checkInClass, isPending: checkInPending } = useCheckInClass();
+  const { mutateAsync: deleteCheckin, isPending: deleteCheckinPending } = useDeleteCheckin();
 
   const activeEnrolledBox = useMemo(
     () => enrolledBoxes.find((box) => box._id === selectedBoxId) ?? null,
@@ -64,6 +69,58 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
   const formattedWodDate = displayWod?.date
     ? displayWod.date.split("T")[0].replace(/(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1")
     : null;
+
+  const todayCheckins = useMemo(() => {
+    const list: typeof myCheckins = [];
+    const today = new Date();
+
+    for (const item of myCheckins) {
+      const createdAt = new Date(item.createdAt);
+      if (
+        createdAt.getFullYear() !== today.getFullYear() ||
+        createdAt.getMonth() !== today.getMonth() ||
+        createdAt.getDate() !== today.getDate()
+      ) {
+        continue;
+      }
+      list.push(item);
+    }
+
+    return list;
+  }, [myCheckins]);
+
+  const todaysCheckinsByClass = useMemo(() => {
+    const map = new Map<string, { _id: string; createdAt: string }>();
+    for (const item of todayCheckins) {
+      map.set(item.classId, { _id: item._id, createdAt: item.createdAt });
+    }
+    return map;
+  }, [todayCheckins]);
+
+  const hasGlobalCheckinToday = todayCheckins.length > 0;
+
+  const resolveClassStartDate = (startTime: string) => {
+    const [hoursRaw, minutesRaw] = startTime.split(":");
+    const hours = Number(hoursRaw);
+    const minutes = Number(minutesRaw ?? "0");
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+
+    const now = new Date();
+    return new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      hours,
+      minutes,
+      0,
+      0
+    );
+  };
+
+  const getCancelWindowEnd = (classStartDate: Date | null) => {
+    if (!classStartDate) return null;
+    return new Date(classStartDate.getTime() - 60 * 60 * 1000);
+  };
 
   const handleCheckIn = async (classId: string, className: string) => {
     if (!navigator.geolocation) {
@@ -107,7 +164,11 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
               typeof message === "string"
                 ? message
                 : status === 400
-                  ? "Localização fora do box ou aula não está em horário"
+                  ? "Check-in não permitido. Verifique localização, limite de check-ins da turma ou regra de check-in diário do box."
+                  : status === 409
+                    ? "Você já realizou seu check-in diário. Apenas 1 check-in por dia é permitido."
+                  : status === 403
+                    ? "Sem permissão para realizar check-in nesta turma."
                   : "Não foi possível fazer seu check-in neste momento.",
             variant: "destructive",
           });
@@ -125,6 +186,46 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
       },
       { timeout: 10000 }
     );
+  };
+
+  const handleCancelCheckin = async (
+    checkinId: string,
+    className: string,
+    cancelWindowEnd: Date | null
+  ) => {
+    if (cancelWindowEnd && new Date().getTime() > cancelWindowEnd.getTime()) {
+      toast({
+        title: "Janela de cancelamento encerrada",
+        description: "O cancelamento só pode ser feito até 1 hora antes do início da aula.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCancelingCheckinId(checkinId);
+    try {
+      await deleteCheckin(checkinId);
+      toast({
+        title: "Check-in cancelado",
+        description: `Seu check-in da aula ${className} foi removido com sucesso.`,
+      });
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status;
+      const message = (err as { message?: string | string[] })?.message;
+
+      toast({
+        title: "Falha ao cancelar check-in",
+        description:
+          typeof message === "string"
+            ? message
+            : status === 403
+              ? "Cancelamento permitido apenas até 1 hora antes da aula."
+              : "Não foi possível cancelar o check-in neste momento.",
+        variant: "destructive",
+      });
+    } finally {
+      setCancelingCheckinId(null);
+    }
   };
 
   return (
@@ -153,10 +254,12 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
       <div className="glass-card p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Meus boxes</p>
-          <Button size="sm" variant="outline" onClick={onOpenNearbyBoxes}>
-            <Compass className="h-4 w-4 mr-2" />
-            Buscar novo box
-          </Button>
+          {onOpenNearbyBoxes && (
+            <Button size="sm" variant="outline" onClick={onOpenNearbyBoxes}>
+              <Compass className="h-4 w-4 mr-2" />
+              Buscar novo box
+            </Button>
+          )}
         </div>
 
         {boxesLoading && <p className="text-sm text-muted-foreground">Carregando boxes...</p>}
@@ -207,10 +310,23 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
         )}
 
         {(classesToday?.classes.length ?? 0) > 0 && (
+          <>
+            {hasGlobalCheckinToday && (
+              <p className="text-xs text-muted-foreground">
+                Você já fez seu check-in de hoje. A regra atual permite apenas 1 check-in diário por usuário.
+              </p>
+            )}
           <ScrollArea className="h-[220px] w-full rounded-lg border border-border/40 bg-secondary/20 p-1">
             <div className="space-y-2 pr-4">
               {classesToday?.classes.map((classItem) => {
                 const isCheckingIn = checkingInClassId === classItem._id;
+                const classStartDate = resolveClassStartDate(classItem.startTime);
+                const cancelWindowEnd = getCancelWindowEnd(classStartDate);
+                const existingCheckin = todaysCheckinsByClass.get(classItem._id);
+                const isBlockedByDailyRule = hasGlobalCheckinToday && !existingCheckin;
+                const canCancel =
+                  !cancelWindowEnd || new Date().getTime() <= cancelWindowEnd.getTime();
+                const isCanceling = cancelingCheckinId === existingCheckin?._id;
                 return (
                   <div
                     key={classItem._id}
@@ -222,33 +338,80 @@ export function HomeScreen({ onOpenNearbyBoxes, onOpenProfile }: HomeScreenProps
                         <p className="text-xs text-muted-foreground">
                           {classItem.startTime} - {classItem.endTime}
                         </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        disabled={checkInPending || Boolean(checkingInClassId)}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          void handleCheckIn(classItem._id, classItem.name);
-                        }}
-                      >
-                        {isCheckingIn ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Entrando...
-                          </>
-                        ) : (
-                          <>
-                            <LogIn className="h-4 w-4 mr-2" />
-                            Check-in
-                          </>
+                        {typeof classItem.checkinLimit === "number" && (
+                          <p className="text-[11px] text-muted-foreground">
+                            Limite de check-ins: {classItem.checkinLimit}
+                          </p>
                         )}
-                      </Button>
+                        {existingCheckin && cancelWindowEnd && (
+                          <p className="text-[11px] text-muted-foreground">
+                            Cancelamento até {cancelWindowEnd.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        )}
+                      </div>
+                      {existingCheckin ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            deleteCheckinPending ||
+                            Boolean(cancelingCheckinId) ||
+                            !canCancel
+                          }
+                          onClick={(e) => {
+                            e.preventDefault();
+                            void handleCancelCheckin(
+                              existingCheckin._id,
+                              classItem.name,
+                              cancelWindowEnd
+                            );
+                          }}
+                        >
+                          {isCanceling ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Cancelando...
+                            </>
+                          ) : (
+                            "Cancelar check-in"
+                          )}
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          disabled={
+                            isBlockedByDailyRule ||
+                            checkInPending ||
+                            Boolean(checkingInClassId) ||
+                            deleteCheckinPending
+                          }
+                          onClick={(e) => {
+                            e.preventDefault();
+                            void handleCheckIn(classItem._id, classItem.name);
+                          }}
+                        >
+                          {isCheckingIn ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Entrando...
+                            </>
+                          ) : isBlockedByDailyRule ? (
+                            "Check-in já realizado hoje"
+                          ) : (
+                            <>
+                              <LogIn className="h-4 w-4 mr-2" />
+                              Check-in
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
           </ScrollArea>
+          </>
         )}
       </div>
 

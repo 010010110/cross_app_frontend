@@ -16,14 +16,14 @@ export interface FeedUploadResponse {
 }
 
 export interface CreateFeedPostDto {
-  checkinId: string;
+  checkinId?: string;
   text: string;
   photoUrl?: string;
 }
 
 export interface CreateFeedPostResponse {
   postId: string;
-  checkinId: string;
+  checkinId?: string | null;
   message: string;
 }
 

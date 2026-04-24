@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCheckinsBox } from "@/hooks/use-checkins-box";
 import { useCheckinsMe } from "@/hooks/use-checkins-me";
 import { useCreateFeedPost } from "@/hooks/use-create-feed-post";
 import { useFeedList } from "@/hooks/use-feed-list";
@@ -83,7 +84,9 @@ export function FeedScreen() {
   const FEED_STEP = 20;
   const FEED_MAX = 200;
 
-  const { user } = useAuth();
+  const { user, selectedBoxId } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
+  const isStudent = user?.role === "ALUNO";
   const { toast } = useToast();
   const [text, setText] = useState("");
   const [selectedCheckinId, setSelectedCheckinId] = useState("");
@@ -93,12 +96,15 @@ export function FeedScreen() {
   const [reactionsByPost, setReactionsByPost] = useState<Record<string, PostReactionState>>({});
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
+  const checkinsMeQuery = useCheckinsMe(Boolean(user) && !isAdmin);
+  const checkinsBoxQuery = useCheckinsBox(Boolean(user) && isAdmin);
+
   const {
     data: checkins = [],
     isLoading,
     isError: checkinsError,
     refetch: refetchCheckins,
-  } = useCheckinsMe(Boolean(user));
+  } = isAdmin ? checkinsBoxQuery : checkinsMeQuery;
   const {
     data: feedPosts,
     isLoading: feedLoading,
@@ -110,13 +116,17 @@ export function FeedScreen() {
 
   const safeCheckins = useMemo(() => (Array.isArray(checkins) ? checkins : []), [checkins]);
   const safeFeedPosts = useMemo(() => (Array.isArray(feedPosts) ? feedPosts : []), [feedPosts]);
+  const visibleFeedPosts = useMemo(() => {
+    if (!selectedBoxId) return safeFeedPosts;
+    return safeFeedPosts.filter((post) => post.boxId === selectedBoxId);
+  }, [safeFeedPosts, selectedBoxId]);
   const prAutoCount = useMemo(
-    () => safeFeedPosts.filter((post) => post.source === "PR_AUTO").length,
-    [safeFeedPosts]
+    () => visibleFeedPosts.filter((post) => post.source === "PR_AUTO").length,
+    [visibleFeedPosts]
   );
   const uniqueBoxesCount = useMemo(
-    () => new Set(safeFeedPosts.map((post) => post.boxId)).size,
-    [safeFeedPosts]
+    () => new Set(visibleFeedPosts.map((post) => post.boxId)).size,
+    [visibleFeedPosts]
   );
 
   const sortedCheckins = useMemo(
@@ -124,7 +134,9 @@ export function FeedScreen() {
     [safeCheckins]
   );
 
-  const canSubmit = text.trim().length >= 2 && Boolean(selectedCheckinId);
+  const canSubmit = isStudent
+    ? text.trim().length >= 2 && Boolean(selectedCheckinId)
+    : text.trim().length >= 2;
   const isSubmitting = uploadPending || createPostPending;
   const canLoadMore = safeFeedPosts.length >= feedLimit && feedLimit < FEED_MAX;
 
@@ -189,7 +201,9 @@ export function FeedScreen() {
     if (!canSubmit) {
       toast({
         title: "Dados incompletos",
-        description: "Selecione um check-in e escreva pelo menos 2 caracteres.",
+        description: isStudent
+          ? "Selecione um check-in e escreva pelo menos 2 caracteres."
+          : "Escreva pelo menos 2 caracteres para publicar.",
         variant: "destructive",
       });
       return;
@@ -203,11 +217,13 @@ export function FeedScreen() {
         photoUrl = uploadResult.url;
       }
 
-      const result = await createPost({
-        checkinId: selectedCheckinId,
+      const payload = {
         text: text.trim(),
         photoUrl,
-      });
+        ...(selectedCheckinId ? { checkinId: selectedCheckinId } : {}),
+      };
+
+      const result = await createPost(payload);
 
       await refetchFeed();
 
@@ -282,7 +298,11 @@ export function FeedScreen() {
 
             <form onSubmit={handleCreatePost} className="space-y-3">
               <label className="text-xs font-semibold text-muted-foreground" htmlFor="checkin-select">
-                Check-in da aula
+                {isStudent
+                  ? "Check-in da aula"
+                  : isAdmin
+                    ? "Check-in do box (opcional)"
+                    : "Check-in (opcional)"}
               </label>
               <select
                 id="checkin-select"
@@ -291,7 +311,7 @@ export function FeedScreen() {
                 className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                 disabled={isLoading || sortedCheckins.length === 0 || isSubmitting}
               >
-                <option value="">Selecione um check-in</option>
+                <option value="">{isStudent ? "Selecione um check-in" : "Sem vincular check-in"}</option>
                 {sortedCheckins.map((checkin, index) => (
                   <option
                     key={`${checkin._id || "checkin"}-${checkin.createdAt || "no-date"}-${index}`}
@@ -304,7 +324,7 @@ export function FeedScreen() {
 
               {checkinsError && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive space-y-2">
-                  <p>Falha ao carregar seus check-ins.</p>
+                  <p>{isAdmin ? "Falha ao carregar os check-ins do box." : "Falha ao carregar seus check-ins."}</p>
                   <Button type="button" variant="outline" size="sm" onClick={() => void refetchCheckins()}>
                     Tentar novamente
                   </Button>
@@ -313,14 +333,22 @@ export function FeedScreen() {
 
               {!isLoading && !checkinsError && sortedCheckins.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Nenhum check-in encontrado para publicar. Faça check-in em uma aula primeiro.
+                  {isStudent
+                    ? "Nenhum check-in encontrado para publicar. Faça check-in em uma aula primeiro."
+                    : isAdmin
+                    ? "Nenhum check-in encontrado no box para vincular ao post."
+                    : "Nenhum check-in encontrado para vincular ao post."}
                 </p>
               )}
 
               <Textarea
                 value={text}
                 onChange={(event) => setText(event.target.value)}
-                placeholder="Compartilhe como foi seu treino de hoje..."
+                placeholder={
+                  isAdmin
+                    ? "Compartilhe um aviso, destaque ou recado para o feed do box..."
+                    : "Compartilhe como foi seu treino de hoje..."
+                }
                 className="min-h-[96px]"
                 maxLength={1200}
                 disabled={isSubmitting}
@@ -362,7 +390,7 @@ export function FeedScreen() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
             <Sparkles className="h-3.5 w-3.5" />
-            {safeFeedPosts.length} posts
+            {visibleFeedPosts.length} posts
           </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
             <Trophy className="h-3.5 w-3.5" />
@@ -397,14 +425,16 @@ export function FeedScreen() {
           </div>
         )}
 
-        {!feedLoading && !feedError && safeFeedPosts.length === 0 && (
+        {!feedLoading && !feedError && visibleFeedPosts.length === 0 && (
           <div className="glass-card p-6 text-center space-y-3 border-dashed">
             <div className="mx-auto h-12 w-12 rounded-full bg-secondary flex items-center justify-center">
               <Newspaper className="h-6 w-6 text-muted-foreground" />
             </div>
             <h3 className="text-base font-semibold">O feed está vazio</h3>
             <p className="text-sm text-muted-foreground">
-              Toque no botão + para criar seu primeiro post.
+              {selectedBoxId
+                ? "Nao ha posts para o box em foco."
+                : "Toque no botão + para criar seu primeiro post."}
             </p>
             <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
               Criar primeiro post
@@ -412,7 +442,7 @@ export function FeedScreen() {
           </div>
         )}
 
-        {safeFeedPosts.map((post, index) => (
+        {visibleFeedPosts.map((post, index) => (
           <div key={`${post._id || "post"}-${post.createdAt || "no-date"}-${index}`} className="glass-card p-4 space-y-3">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center">
