@@ -31,3 +31,7 @@ Se aparecer aviso de Browserslist desatualizado, execute:
 ```bash
 npx update-browserslist-db@latest
 ```
+
+## Documentacao
+
+- Roadmap do projeto: [ROADMAP.md](ROADMAP.md)
